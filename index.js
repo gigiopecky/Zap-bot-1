@@ -156,7 +156,7 @@ app.get('/qr', (req, res) => {
                 <div class="qr-container">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(lastQR)}" alt="QR Code" />
                 </div>
-                <div class="timer">⏱️ QR Code expira em 60 segundos</div>
+                <div class="timer">⏱️ QR Code expira em 120 segundos</div>
                 <div class="refresh-info">A página atualiza automaticamente...</div>
             </div>
         </body>
@@ -247,7 +247,7 @@ async function startBot() {
         browser: ["Rifa Bot", "Chrome", "1.0"],
         syncFullHistory: false,
         markOnlineOnConnect: false,
-        qrTimeout: 60000
+        qrTimeout: 120000
     })
 
     // salva login
