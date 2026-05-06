@@ -3,6 +3,7 @@ const { useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/bai
 const fs = require("fs")
 const express = require('express')
 const app = express()
+const { SocksClient } = require('socks')
 
 // =====================
 // 📁 ARQUIVOS BASE
@@ -247,7 +248,9 @@ async function startBot() {
         browser: ["Rifa Bot", "Chrome", "1.0"],
         syncFullHistory: false,
         markOnlineOnConnect: false,
-        qrTimeout: 120000
+        qrTimeout: 120000,
+        agent: null,
+        fetchOpts: {}
     })
 
     // salva login
