@@ -316,6 +316,6 @@ async function startBot() {
             return sock.sendMessage(from, { text: resposta })
         }
     })
-}
+
 
 startBot()
