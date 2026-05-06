@@ -10,8 +10,8 @@ async function startBot() {
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
         browser: ["Ubuntu", "Chrome", "20.0.0"]
+        printQRInTerminal: true,
     })
 
     sock.ev.on("creds.update", saveCreds)
