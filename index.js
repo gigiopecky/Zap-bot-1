@@ -3,7 +3,7 @@ const { useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/bai
 const fs = require("fs")
 
 // =====================
-// 📁 ARQUIVOS BASE
+// 📁 ARQUIVOS
 // =====================
 const ADMIN_FILE = "admins.json"
 const RIFA_FILE = "rifas.json"
@@ -12,15 +12,25 @@ if (!fs.existsSync(ADMIN_FILE)) fs.writeFileSync(ADMIN_FILE, "[]")
 if (!fs.existsSync(RIFA_FILE)) fs.writeFileSync(RIFA_FILE, "{}")
 
 // =====================
-// 🧠 FUNÇÕES AUXILIARES
+// 🧠 UTIL
 // =====================
-const load = (file) => JSON.parse(fs.readFileSync(file))
+const load = (file) => {
+    try {
+        return JSON.parse(fs.readFileSync(file))
+    } catch (e) {
+        return file === ADMIN_FILE ? [] : {}
+    }
+}
 const save = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2))
+
+// controle global (IMPORTANTE)
+let restarting = false
 
 // =====================
 // 🚀 BOT
 // =====================
 async function startBot() {
+
     const { state, saveCreds } = await useMultiFileAuthState("./auth")
 
     const sock = makeWASocket({
@@ -31,37 +41,43 @@ async function startBot() {
         markOnlineOnConnect: false
     })
 
-    // =====================
-    // 🔐 AUTENTICAÇÃO
-    // =====================
+    // salva login
     sock.ev.on("creds.update", saveCreds)
 
- sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update
+    // =====================
+    // 🔐 CONEXÃO
+    // =====================
+    sock.ev.on("connection.update", (update) => {
+        const { connection, lastDisconnect } = update
 
-    if (connection === "open") {
-        console.log("✅ BOT ONLINE")
-    }
-
-    if (connection === "close") {
-        const code = lastDisconnect?.error?.output?.statusCode
-
-        console.log("⚠️ conexão caiu:", code)
-
-        const isLoggedOut = code === DisconnectReason.loggedOut
-
-        if (isLoggedOut) {
-            console.log("❌ Logout real detectado — apaga a pasta auth")
-            return
+        if (connection === "open") {
+            console.log("✅ BOT ONLINE")
+            restarting = false
         }
 
-        console.log("🔄 tentando reconectar em 3s...")
+        if (connection === "close") {
+            const code = lastDisconnect?.error?.output?.statusCode
 
-        setTimeout(() => {
-            startBot()
-        }, 3000)
-    }
-})
+            console.log("⚠️ conexão caiu:", code)
+
+            if (restarting) return
+
+            if (code === DisconnectReason.loggedOut) {
+                console.log("❌ logout real — apague a pasta auth")
+                return
+            }
+
+            restarting = true
+
+            console.log("🔄 reiniciando bot em 5s...")
+
+setTimeout(() => {
+    console.log("♻️ reiniciando bot...")
+    startBot()
+}, 5000)
+        }
+    })
+
     // =====================
     // 💬 MENSAGENS
     // =====================
@@ -80,20 +96,18 @@ async function startBot() {
 
         const admins = load(ADMIN_FILE)
         const rifas = load(RIFA_FILE)
-        const isAdmin = admins.includes(sender)
 
         // =====================
-        // 📌 MENU
+        // 📌 AJUDA
         // =====================
         if (text === "/ajuda") {
             return sock.sendMessage(from, {
                 text:
-`🤖 *BOT RIFA*
+`🤖 BOT RIFA
 
 /lista titulo|qtd|pix|valor
 /verlista
 /addadmin numero
-/pago numero (admin)
 
 📌 reservar:
 ex: 1 2 3`
@@ -125,7 +139,7 @@ ex: 1 2 3`
 
             if (args.length < 4) {
                 return sock.sendMessage(from, {
-                    text: "❌ uso: /lista titulo|qtd|pix|valor"
+                    text: "❌ use: /lista titulo|qtd|pix|valor"
                 })
             }
 
@@ -152,7 +166,7 @@ ex: 1 2 3`
             if (!rifa) return sock.sendMessage(from, { text: "❌ sem rifa ativa" })
 
             let out =
-`🎟️ *${rifa.titulo}*
+`🎟️ ${rifa.titulo}
 💰 ${rifa.valor}
 🔑 PIX: ${rifa.pix}
 
