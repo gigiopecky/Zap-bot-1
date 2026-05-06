@@ -5,9 +5,13 @@ if (!fs.existsSync("admins.json")) fs.writeFileSync("admins.json", "[]")
 if (!fs.existsSync("rifas.json")) fs.writeFileSync("rifas.json", "{}")
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState("auth")
+    const { state, saveCreds } = await useMultiFileAuthState("./auth_info_baileys")
 
-    const sock = makeWASocket({ auth: state })
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true,
+        browser: ["Ubuntu", "Chrome", "20.0.0"]
+    })
 
     sock.ev.on("creds.update", saveCreds)
 
@@ -15,14 +19,17 @@ async function startBot() {
         const { connection, lastDisconnect } = update
 
         if (connection === "close") {
-            const shouldReconnect =
-                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+            const statusCode = lastDisconnect?.error?.output?.statusCode
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut
 
             if (shouldReconnect) startBot()
-        } else if (connection === "open") {
+        }
+
+        if (connection === "open") {
             console.log("Bot conectado ✅")
         }
     })
+    }
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0]
