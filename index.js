@@ -36,24 +36,32 @@ async function startBot() {
     // =====================
     sock.ev.on("creds.update", saveCreds)
 
-    sock.ev.on("connection.update", (update) => {
-        const { connection, lastDisconnect } = update
+ sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect } = update
 
-        if (connection === "open") {
-            console.log("✅ BOT ONLINE")
+    if (connection === "open") {
+        console.log("✅ BOT ONLINE")
+    }
+
+    if (connection === "close") {
+        const code = lastDisconnect?.error?.output?.statusCode
+
+        console.log("⚠️ conexão caiu:", code)
+
+        const isLoggedOut = code === DisconnectReason.loggedOut
+
+        if (isLoggedOut) {
+            console.log("❌ Logout real detectado — apaga a pasta auth")
+            return
         }
 
-        if (connection === "close") {
-            const code = lastDisconnect?.error?.output?.statusCode
-            const reconnect = code !== DisconnectReason.loggedOut
+        console.log("🔄 tentando reconectar em 3s...")
 
-            console.log("⚠️ conexão caiu:", code)
-
-            if (reconnect) startBot()
-            else console.log("❌ logout detectado (apague /auth)")
-        }
-    })
-
+        setTimeout(() => {
+            startBot()
+        }, 3000)
+    }
+})
     // =====================
     // 💬 MENSAGENS
     // =====================
