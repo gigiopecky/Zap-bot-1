@@ -9,11 +9,15 @@ if (!fs.existsSync("rifas.json")) fs.writeFileSync("rifas.json", "{}")
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("./auth_info_baileys")
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false, // Vamos imprimir manualmente para garantir que apareça
-        browser: ["Ubuntu", "Chrome", "20.0.0"],
-    })
+const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: ["Ubuntu", "Chrome", "20.0.0"],
+    connectTimeoutMs: 60000, // Aumenta o tempo de espera para 60s
+    defaultQueryTimeoutMs: 0, // Evita timeout em consultas
+    keepAliveIntervalMs: 10000, // Mantém a conexão ativa
+})
+
 
     sock.ev.on("creds.update", saveCreds)
 
