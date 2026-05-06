@@ -1,146 +1,188 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys")
+const makeWASocket = require("@whiskeysockets/baileys").default
+const { useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys")
 const fs = require("fs")
-const qrcode = require("qrcode-terminal") // Biblioteca para mostrar o QR no console
 
-// Inicialização de arquivos
-if (!fs.existsSync("admins.json")) fs.writeFileSync("admins.json", "[]")
-if (!fs.existsSync("rifas.json")) fs.writeFileSync("rifas.json", "{}")
+// =====================
+// 📁 ARQUIVOS BASE
+// =====================
+const ADMIN_FILE = "admins.json"
+const RIFA_FILE = "rifas.json"
 
+if (!fs.existsSync(ADMIN_FILE)) fs.writeFileSync(ADMIN_FILE, "[]")
+if (!fs.existsSync(RIFA_FILE)) fs.writeFileSync(RIFA_FILE, "{}")
+
+// =====================
+// 🧠 FUNÇÕES AUXILIARES
+// =====================
+const load = (file) => JSON.parse(fs.readFileSync(file))
+const save = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2))
+
+// =====================
+// 🚀 BOT
+// =====================
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState("./auth_info_baileys")
+    const { state, saveCreds } = await useMultiFileAuthState("./auth")
 
-const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    browser: ["Ubuntu", "Chrome", "20.0.0"],
-    connectTimeoutMs: 60000, // Aumenta o tempo de espera para 60s
-    defaultQueryTimeoutMs: 0, // Evita timeout em consultas
-    keepAliveIntervalMs: 10000, // Mantém a conexão ativa
-})
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true,
+        browser: ["Rifa Bot", "Chrome", "1.0"],
+        syncFullHistory: false,
+        markOnlineOnConnect: false
+    })
 
-
+    // =====================
+    // 🔐 AUTENTICAÇÃO
+    // =====================
     sock.ev.on("creds.update", saveCreds)
 
     sock.ev.on("connection.update", (update) => {
-        const { connection, lastDisconnect, qr } = update
+        const { connection, lastDisconnect } = update
 
-        // Mostra o QR Code quando gerado
-        if (qr) {
-            console.log("📌 ESCANEIE O QR CODE ABAIXO:")
-            qrcode.generate(qr, { small: true })
+        if (connection === "open") {
+            console.log("✅ BOT ONLINE")
         }
 
         if (connection === "close") {
-            const statusCode = lastDisconnect?.error?.output?.statusCode
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+            const code = lastDisconnect?.error?.output?.statusCode
+            const reconnect = code !== DisconnectReason.loggedOut
 
-            console.log("Conexão fechada. Reconectando...", shouldReconnect)
-            if (shouldReconnect) startBot()
-        }
+            console.log("⚠️ conexão caiu:", code)
 
-        if (connection === "open") {
-            console.log("Bot conectado com sucesso! ✅")
+            if (reconnect) startBot()
+            else console.log("❌ logout detectado (apague /auth)")
         }
     })
 
+    // =====================
+    // 💬 MENSAGENS
+    // =====================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0]
-        if (!msg.message || msg.key.fromMe) return // Ignora mensagens do próprio bot
+        if (!msg.message || msg.key.fromMe) return
 
         const from = msg.key.remoteJid
         const sender = msg.key.participant || msg.key.remoteJid
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text
+
+        const text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text
 
         if (!text) return
 
-        // Carregar dados
-        const admins = JSON.parse(fs.readFileSync("admins.json"))
+        const admins = load(ADMIN_FILE)
+        const rifas = load(RIFA_FILE)
         const isAdmin = admins.includes(sender)
 
-        // ===== COMANDO: /AJUDA =====
+        // =====================
+        // 📌 MENU
+        // =====================
         if (text === "/ajuda") {
-            const menu = `🤖 *Comandos do Bot de Rifa*:\n\n` +
-                         `*/lista* titulo|qtd|pix|valor\n` +
-                         `*/verlista* - Ver números\n` +
-                         `*/pago* numero - (Admin)\n` +
-                         `*/remover* numero - (Admin)\n\n` +
-                         `*Para reservar:* Digite os números separados por espaço (ex: 5 12 20)`
-            return sock.sendMessage(from, { text: menu })
+            return sock.sendMessage(from, {
+                text:
+`🤖 *BOT RIFA*
+
+/lista titulo|qtd|pix|valor
+/verlista
+/addadmin numero
+/pago numero (admin)
+
+📌 reservar:
+ex: 1 2 3`
+            })
         }
 
-        // ===== COMANDO: /ADDADMIN =====
+        // =====================
+        // 👑 ADD ADMIN
+        // =====================
         if (text.startsWith("/addadmin")) {
-            let numero = text.split(" ")[1]
-            if (!numero) return sock.sendMessage(from, { text: "Use: /addadmin 5511999999999" })
+            let num = text.split(" ")[1]
+            if (!num) return
 
-            numero = numero.replace(/\D/g, "") + "@s.whatsapp.net"
-            if (!admins.includes(numero)) {
-                admins.push(numero)
-                fs.writeFileSync("admins.json", JSON.stringify(admins, null, 2))
+            num = num.replace(/\D/g, "") + "@s.whatsapp.net"
+
+            if (!admins.includes(num)) {
+                admins.push(num)
+                save(ADMIN_FILE, admins)
             }
-            return sock.sendMessage(from, { text: "✅ Admin adicionado!" })
+
+            return sock.sendMessage(from, { text: "✅ Admin adicionado" })
         }
 
-        // ===== COMANDO: /LISTA (CRIAR RIFA) =====
+        // =====================
+        // 🎟️ CRIAR RIFA
+        // =====================
         if (text.startsWith("/lista")) {
             const args = text.replace("/lista ", "").split("|")
-            if (args.length < 4) return sock.sendMessage(from, { text: "❌ Formato: /lista Título|Qtd|Pix|Valor" })
 
-            const titulo = args[0]
-            const quantidade = parseInt(args[1])
-            const pix = args[2]
-            const valor = args[3]
+            if (args.length < 4) {
+                return sock.sendMessage(from, {
+                    text: "❌ uso: /lista titulo|qtd|pix|valor"
+                })
+            }
+
+            const [titulo, qtd, pix, valor] = args
 
             let numeros = {}
-            for (let i = 1; i <= quantidade; i++) {
+            for (let i = 1; i <= parseInt(qtd); i++) {
                 numeros[i] = "disponível"
             }
 
-            let data = JSON.parse(fs.readFileSync("rifas.json"))
-            data[from] = { titulo, numeros, valor, pix }
-            fs.writeFileSync("rifas.json", JSON.stringify(data, null, 2))
+            rifas[from] = { titulo, qtd, pix, valor, numeros }
+            save(RIFA_FILE, rifas)
 
-            return sock.sendMessage(from, { text: `✅ Rifa "${titulo}" criada com ${quantidade} números!` })
+            return sock.sendMessage(from, {
+                text: `✅ Rifa criada: ${titulo}`
+            })
         }
 
-        // ===== COMANDO: /VERLISTA =====
+        // =====================
+        // 📊 VER RIFA
+        // =====================
         if (text === "/verlista") {
-            const data = JSON.parse(fs.readFileSync("rifas.json"))
-            const rifa = data[from]
-            if (!rifa) return sock.sendMessage(from, { text: "❌ Nenhuma rifa ativa neste grupo." })
+            const rifa = rifas[from]
+            if (!rifa) return sock.sendMessage(from, { text: "❌ sem rifa ativa" })
 
-            let lista = `🎟️ *${rifa.titulo}*\n💰 Valor: ${rifa.valor}\n🔑 PIX: ${rifa.pix}\n\n`
+            let out =
+`🎟️ *${rifa.titulo}*
+💰 ${rifa.valor}
+🔑 PIX: ${rifa.pix}
+
+`
+
             for (let n in rifa.numeros) {
-                const status = rifa.numeros[n] === "disponível" ? "🟢" : `🔴 (${rifa.numeros[n]})`
-                lista += `${n}: ${status}\n`
+                const status = rifa.numeros[n]
+                out += `${n}: ${status === "disponível" ? "🟢" : "🔴 " + status}\n`
             }
-            return sock.sendMessage(from, { text: lista })
+
+            return sock.sendMessage(from, { text: out })
         }
 
-        // ===== LÓGICA DE RESERVA DE NÚMEROS =====
+        // =====================
+        // 🎯 RESERVA NÚMEROS
+        // =====================
         if (/^\d+( \d+)*$/.test(text)) {
-            const data = JSON.parse(fs.readFileSync("rifas.json"))
-            const rifa = data[from]
+            const rifa = rifas[from]
             if (!rifa) return
 
             const nums = text.split(" ")
-            const nome = msg.pushName || "Cliente"
+            const nome = msg.pushName || "cliente"
             const final = sender.replace(/\D/g, "").slice(-4)
+
             let resposta = ""
 
             nums.forEach(n => {
                 if (rifa.numeros[n] === "disponível") {
                     rifa.numeros[n] = `${nome} - ${final}`
-                    resposta += `✅ Número ${n} reservado!\n`
-                } else if (rifa.numeros[n]) {
-                    resposta += `❌ Número ${n} já está ocupado.\n`
+                    resposta += `✅ ${n} reservado\n`
+                } else {
+                    resposta += `❌ ${n} ocupado\n`
                 }
             })
 
-            if (resposta) {
-                fs.writeFileSync("rifas.json", JSON.stringify(data, null, 2))
-                return sock.sendMessage(from, { text: resposta })
-            }
+            save(RIFA_FILE, rifas)
+
+            return sock.sendMessage(from, { text: resposta })
         }
     })
 }
